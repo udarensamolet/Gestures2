@@ -31,7 +31,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'    
+          java-version: '17'
 
       - name: Install and Run Appium Server
         run: |
@@ -44,8 +44,13 @@ jobs:
           IP_ADDRESS=$(ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1)
           echo "Appium server IP: $IP_ADDRESS"
           echo "APPIUM_SERVER_URI=http://$IP_ADDRESS:4723" >> $GITHUB_ENV
-          appium --allow-cors &
+          appium --allow-cors > appium_server.log 2>&1 &
           sleep 10  # Wait for the server to start
+          if ! curl --silent --fail "$APPIUM_SERVER_URI/status"; then
+            echo "Appium server failed to start"
+            cat appium_server.log
+            exit 1
+          fi
 
       - name: Verify Appium Server is running
         run: |
@@ -89,6 +94,8 @@ jobs:
               sleep 10
             fi
           done
+          adb devices
+          adb shell pm list packages
           adb shell getprop init.svc.bootanim
 
       - name: Wait for emulator to fully boot
@@ -114,12 +121,6 @@ jobs:
           adb shell settings put global transition_animation_scale 0.0
           adb shell settings put global animator_duration_scale 0.0
           adb shell input keyevent 82  # Unlock screen
-
-      - name: Ensure ADB is connected and device is ready
-        run: |
-          adb devices
-          adb wait-for-device
-          adb shell getprop init.svc.bootanim | grep -q 'stopped' || exit 1
 
       - name: Extract and Set Host and Port
         run: |
