@@ -31,20 +31,27 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'    
+          java-version: '17'
 
       - name: Install and Run Appium Server
         run: |
           npm install -g appium@2.11.2
           appium driver install uiautomator2
+
       - name: Start Appium Server with CORS
         id: start_appium
         run: |
           IP_ADDRESS=$(ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1)
           echo "Appium server IP: $IP_ADDRESS"
           echo "APPIUM_SERVER_URI=http://$IP_ADDRESS:4723" >> $GITHUB_ENV
-          appium --allow-cors &
+          appium --allow-cors > appium_server.log 2>&1 &
           sleep 10  # Wait for the server to start
+          if ! curl --silent --fail "$APPIUM_SERVER_URI/status"; then
+            echo "Appium server failed to start"
+            cat appium_server.log
+            exit 1
+          fi
+
       - name: Verify Appium Server is running
         run: |
           echo "Verifying server at $APPIUM_SERVER_URI"
@@ -70,6 +77,7 @@ jobs:
       - name: Download x86 system image
         run: |
           yes | sdkmanager --install "system-images;android-30;google_apis;x86"
+
       - name: Create AVD
         run: echo "no" | avdmanager create avd -n test -k "system-images;android-30;google_apis;x86" --device "pixel"
 
@@ -86,7 +94,10 @@ jobs:
               sleep 10
             fi
           done
+          adb devices
+          adb shell pm list packages
           adb shell getprop init.svc.bootanim
+
       - name: Wait for emulator to fully boot
         run: |
           bootanim=""
@@ -110,6 +121,7 @@ jobs:
           adb shell settings put global transition_animation_scale 0.0
           adb shell settings put global animator_duration_scale 0.0
           adb shell input keyevent 82  # Unlock screen
+
       - name: Extract and Set Host and Port
         run: |
           echo "Extracting host and port from APPIUM_SERVER_URI"
